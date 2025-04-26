@@ -22,6 +22,7 @@ model User {
   reminderSettings Json?
   updates        Update[]
   settings       UserSettings[]
+  reportSchedules ReportSchedule[]
 }
 
 model Project {
@@ -68,4 +69,25 @@ model UserSettings {
   user User @relation(fields: [userEmail], references: [email])
 
   @@unique([userEmail, settingType])
+}
+
+model ReportSchedule {
+  id                String    @id @default(cuid())
+  userId            String    
+  impactLevel       Int
+  priorityThreshold String    // 'high', 'medium', or 'low'
+  recipients        String    // JSON string of email addresses
+  scheduleDays      String    // JSON string of days (e.g., ["Monday"])
+  scheduleTime      String    // Time in 24h format (e.g., "09:00")
+  endType           String    // 'never', 'on-date', or 'after'
+  endDate           String?   // ISO date string
+  endCount          Int?      // Number of reports before ending
+  sendCopyToSelf    Boolean   @default(true)
+  active            Boolean   @default(true)
+  lastSentAt        DateTime?
+  nextSendAt        DateTime
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [email])
 }
