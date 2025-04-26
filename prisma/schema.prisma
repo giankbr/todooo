@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  password       String
+  department     String?
+  role           String   @default("user") // user, admin, manager
+  avatar         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  active         Boolean  @default(true)
+  phone          String?
+  reminderSettings Json?
+  updates        Update[]
+  settings       UserSettings[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  priority    String   @default("medium") // low, medium, high
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  updates     Update[]
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  projects    Project[]
+}
+
+model Update {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectName String?  // For cases where project isn't in the system
+  tasks       String   @db.Text // Change to TEXT type to handle larger JSON strings
+  source      String?  // manual, whatsapp, etc.
+  rawContent  String?  @db.Text // Also make this TEXT since it might contain long messages
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserSettings {
+  id         String   @id @default(cuid())
+  userEmail  String
+  settingType String  // e.g., "appearance", "preferences" 
+  value      String   // JSON string of the settings
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userEmail], references: [email])
+
+  @@unique([userEmail, settingType])
+}
