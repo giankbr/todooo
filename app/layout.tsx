@@ -1,5 +1,6 @@
 import NextAuthSessionProvider from '@/components/providers/session-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
+import { ThemeProvider } from '@/components/providers/theme-provider';
 import ToastProvider from '@/components/providers/toast-provider';
 import { Metadata } from 'next';
 import { Outfit } from 'next/font/google';
@@ -38,13 +39,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={outfit.variable}>
+    <html lang="en" className={outfit.variable} suppressHydrationWarning>
       <body className="font-outfit">
         <NextAuthSessionProvider>
-          <SettingsProvider>
-            {children}
-            <ToastProvider />
-          </SettingsProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <SettingsProvider>
+              {children}
+              <ToastProvider />
+            </SettingsProvider>
+          </ThemeProvider>
         </NextAuthSessionProvider>
       </body>
     </html>

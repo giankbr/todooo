@@ -59,13 +59,13 @@ model Update {
 }
 
 model UserSettings {
-  id         String   @id @default(cuid())
-  userEmail  String
-  settingType String  // e.g., "appearance", "preferences" 
-  value      String   // JSON string of the settings
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userEmail   String
+  settingType String  // "appearance" or "preferences" 
+  value       String   // JSON string of the settings
+  updatedAt   DateTime @updatedAt
 
-  user       User     @relation(fields: [userEmail], references: [email])
+  user User @relation(fields: [userEmail], references: [email])
 
   @@unique([userEmail, settingType])
 }

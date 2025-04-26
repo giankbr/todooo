@@ -26,20 +26,33 @@ export async function POST(req: Request) {
     }
 
     // Save to database
-    await db.userSettings.upsert({
-      where: {
-        userEmail: session.user.email,
-        settingType: 'appearance',
-      },
-      update: {
-        value: JSON.stringify(data),
-      },
-      create: {
-        userEmail: session.user.email,
-        settingType: 'appearance',
-        value: JSON.stringify(data),
-      },
-    });
+    try {
+      await db.userSettings.upsert({
+        where: {
+          userEmail_settingType: {
+            userEmail: session.user.email,
+            settingType: 'appearance',
+          },
+        },
+        update: {
+          value: JSON.stringify(data),
+        },
+        create: {
+          userEmail: session.user.email,
+          settingType: 'appearance',
+          value: JSON.stringify(data),
+        },
+      });
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+      // Fall back to just returning success even if DB fails
+      // This lets the client-side still work with localStorage
+      return NextResponse.json({
+        success: true,
+        message: 'Settings saved locally only',
+        warning: 'Could not save to database',
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -47,7 +60,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Error saving appearance settings:', error);
-    return NextResponse.json({ error: 'Failed to save appearance settings' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save appearance settings', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -60,22 +73,34 @@ export async function GET() {
     }
 
     // Get from database
-    const settings = await db.userSettings.findUnique({
-      where: {
-        userEmail: session.user.email,
-        settingType: 'appearance',
-      },
-    });
+    try {
+      const settings = await db.userSettings.findUnique({
+        where: {
+          userEmail_settingType: {
+            userEmail: session.user.email,
+            settingType: 'appearance',
+          },
+        },
+      });
 
-    if (!settings) {
+      if (!settings) {
+        return NextResponse.json({
+          theme: 'system',
+          compactMode: false,
+          fontScale: 'normal',
+        });
+      }
+
+      return NextResponse.json(JSON.parse(settings.value));
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+      // Return defaults if DB fails
       return NextResponse.json({
         theme: 'system',
         compactMode: false,
         fontScale: 'normal',
       });
     }
-
-    return NextResponse.json(JSON.parse(settings.value));
   } catch (error) {
     console.error('Error fetching appearance settings:', error);
     return NextResponse.json({ error: 'Failed to fetch appearance settings' }, { status: 500 });
