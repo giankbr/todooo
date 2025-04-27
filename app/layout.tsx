@@ -13,7 +13,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: 'StandUp - Task & Project Management Platform',
+  title: 'MorfoTasks - Task & Project Management Platform',
   description: 'Manage your daily tasks, standups, and projects in one place',
   keywords: ['task management', 'standup', 'project management', 'productivity'],
   authors: [{ name: 'gian', url: 'https://porto-gian.vercel.com' }],
