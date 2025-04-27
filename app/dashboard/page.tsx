@@ -113,18 +113,106 @@ export default function DashboardPage() {
     setFilteredTasks(sorted);
   };
 
-  const fetchTasks = async (): Promise<void> => {
+  // Update the fetchTasks function with better error handling
+  const fetchTasks = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/tasks?date=${selectedDate}`);
-      const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || 'Failed to load tasks');
+      const apiUrl = `/api/tasks/list?date=${selectedDate}`;
+      console.log('Fetching tasks from API:', apiUrl);
 
-      setTasks(data.tasks);
+      const response = await fetch(apiUrl, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+
+      console.log(`API response status: ${response.status}`);
+
+      // Handle empty responses safely
+      const text = await response.text();
+      console.log('Response content length:', text.length);
+
+      if (!response.ok) {
+        console.error('Error response content:', text);
+
+        if (process.env.NODE_ENV === 'development') {
+          // In development, show a more detailed error message
+          toast.error(`API Error (${response.status}): ${text}`);
+
+          // Use mock data in development
+          console.log('Using mock data due to API error');
+          setTasks([
+            {
+              id: 'mock-error-1',
+              title: `Task for ${selectedDate} (Mock)`,
+              completed: false,
+              priority: 'high',
+              category: 'Development',
+              date: new Date().toISOString(),
+              user: {
+                name: 'Test User',
+                avatar: '/placeholder.svg',
+                initials: 'TU',
+              },
+            },
+            {
+              id: 'mock-error-2',
+              title: 'Another mock task',
+              completed: true,
+              priority: 'medium',
+              category: 'Design',
+              date: new Date().toISOString(),
+              user: {
+                name: 'Test User',
+                avatar: '/placeholder.svg',
+                initials: 'TU',
+              },
+            },
+          ]);
+          return;
+        }
+
+        throw new Error(`Error fetching tasks: ${response.status}`);
+      }
+
+      // Only try to parse if there's content
+      const data = text.length > 0 ? JSON.parse(text) : { tasks: [] };
+      console.log('Parsed API response:', data);
+
+      if (Array.isArray(data.tasks)) {
+        console.log(`Successfully fetched ${data.tasks.length} tasks for date ${selectedDate}`);
+        setTasks(data.tasks);
+      } else {
+        console.warn('API returned data without a tasks array:', data);
+        setTasks([]);
+      }
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
       toast.error('Failed to load tasks');
+
+      // In development, use mock data to allow UI testing
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Using mock data due to error');
+        setTasks([
+          {
+            id: 'mock-fallback-1',
+            title: `Emergency mock task for ${selectedDate}`,
+            completed: false,
+            priority: 'high',
+            category: 'Development',
+            date: new Date().toISOString(),
+            user: {
+              name: 'Test User',
+              avatar: '/placeholder.svg',
+              initials: 'TU',
+            },
+          },
+        ]);
+      } else {
+        setTasks([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -140,9 +228,23 @@ export default function DashboardPage() {
         body: JSON.stringify(data),
       });
 
-      const result = await res.json();
+      const responseText = await res.text();
+      console.log('Response text:', responseText);
 
-      if (!res.ok) throw new Error(result.error || 'Failed to add tasks');
+      let result: { success: boolean; error?: string } = { success: res.ok };
+
+      try {
+        // Only try to parse if there's actual content
+        if (responseText) {
+          result = JSON.parse(responseText);
+        }
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+      }
+
+      if (!res.ok || result.error) {
+        throw new Error(result.error || 'Failed to add tasks');
+      }
 
       toast.success('Tasks added successfully');
       setIsAddTaskOpen(false);
@@ -161,11 +263,10 @@ export default function DashboardPage() {
       // Optimistic UI update
       setTasks(tasks.map((task) => (task.id === taskId ? { ...task, completed: isCompleted } : task)));
 
-      // Parse taskId to extract required components for API
-      // Format is likely "updateId-taskIndex-taskHash"
-      const [updateId, taskIndex] = taskId.split('-');
+      // Parse taskId to extract update ID
+      const [updateId] = taskId.split('-');
 
-      // Send update to the server with the correct endpoint structure
+      // Send update to the server
       const res = await fetch(`/api/tasks/${updateId}/task/${taskId}`, {
         method: 'PATCH',
         headers: {
@@ -176,10 +277,26 @@ export default function DashboardPage() {
         }),
       });
 
-      if (!res.ok) {
+      const responseText = await res.text();
+      console.log('Response text:', responseText);
+
+      let responseData;
+      try {
+        // Only try to parse if there's actual content
+        if (responseText) {
+          responseData = JSON.parse(responseText);
+        } else {
+          responseData = { success: res.ok };
+        }
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        responseData = { success: false, error: 'Invalid response format' };
+      }
+
+      if (!res.ok || !responseData.success) {
         // If server update fails, revert the optimistic update
         setTasks(tasks.map((task) => (task.id === taskId ? { ...task, completed: !isCompleted } : task)));
-        throw new Error('Failed to update task status');
+        throw new Error(responseData.error || 'Failed to update task status');
       }
     } catch (error) {
       console.error('Failed to update task status:', error);
@@ -675,6 +792,7 @@ export default function DashboardPage() {
             </Button>
           </div>
 
+          {/* Update the date controls to show loading state */}
           <div className="flex items-center justify-center gap-3 mb-4">
             <Button
               variant="outline"
@@ -682,13 +800,25 @@ export default function DashboardPage() {
               onClick={() => {
                 const yesterday = new Date(selectedDate);
                 yesterday.setDate(yesterday.getDate() - 1);
-                setSelectedDate(yesterday.toISOString().split('T')[0]);
+                const newDate = yesterday.toISOString().split('T')[0];
+                console.log(`Changing date to yesterday: ${newDate}`);
+                setSelectedDate(newDate);
+                toast.info(`Showing tasks for ${new Date(newDate).toLocaleDateString()}`);
               }}
             >
               Yesterday
             </Button>
 
-            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-40" />
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => {
+                console.log(`Date input changed to: ${e.target.value}`);
+                setSelectedDate(e.target.value);
+                toast.info(`Showing tasks for ${new Date(e.target.value).toLocaleDateString()}`);
+              }}
+              className="w-40"
+            />
 
             <Button
               variant="outline"
@@ -696,7 +826,10 @@ export default function DashboardPage() {
               onClick={() => {
                 const tomorrow = new Date(selectedDate);
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                setSelectedDate(tomorrow.toISOString().split('T')[0]);
+                const newDate = tomorrow.toISOString().split('T')[0];
+                console.log(`Changing date to tomorrow: ${newDate}`);
+                setSelectedDate(newDate);
+                toast.info(`Showing tasks for ${new Date(newDate).toLocaleDateString()}`);
               }}
             >
               Tomorrow

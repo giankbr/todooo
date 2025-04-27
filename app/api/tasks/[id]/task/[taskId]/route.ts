@@ -2,117 +2,178 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
 
-// Define interfaces for our data structures
-interface TaskData {
-  description: string;
-  completed: boolean;
-}
-
-interface UpdateTaskDescriptionRequest {
-  newDescription: string;
-}
-
-export async function DELETE(req: Request, { params }: { params: { id: string; taskId: string } }): Promise<NextResponse> {
+export async function PATCH(req: Request, { params }: { params: { id: string; taskId: string } }) {
   try {
     const session = await getServerSession();
-
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const updateId = params.id;
-    const taskId = params.taskId;
+    const { id, taskId } = params;
+    const data = await req.json();
 
-    // Get the update from the database
-    const update = await db.update.findUnique({
-      where: { id: updateId },
-    });
+    console.log('Task update request:', { id, taskId, data });
 
-    if (!update) {
-      return NextResponse.json({ error: 'Update not found' }, { status: 404 });
-    }
-
-    // Parse the tasks JSON
-    const tasks = JSON.parse(update.tasks) as TaskData[];
-
-    // Extract the task index from the taskId
-    const taskIdParts = taskId.split('-');
-    const taskIndex = parseInt(taskIdParts[1], 10);
-
-    // Check if the index is valid
-    if (isNaN(taskIndex) || taskIndex < 0 || taskIndex >= tasks.length) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-    }
-
-    // Filter out the task to delete
-    const updatedTasks = tasks.filter((_, index) => index !== taskIndex);
-
-    // Update the database
-    await db.update.update({
-      where: { id: updateId },
-      data: {
-        tasks: JSON.stringify(updatedTasks),
+    // Fetch the update to verify ownership and get the tasks
+    const update = await db.update.findFirst({
+      where: {
+        id: id,
+        user: {
+          email: session.user.email,
+        },
       },
     });
 
-    return NextResponse.json({ success: true });
+    if (!update) {
+      return NextResponse.json({ success: false, error: 'Update not found' }, { status: 404 });
+    }
+
+    try {
+      const tasks = JSON.parse(update.tasks || '[]');
+
+      // Extract the task index from the taskId
+      const parts = taskId.split('-');
+      const taskIndex = parseInt(parts[1]);
+
+      if (isNaN(taskIndex) || !tasks[taskIndex]) {
+        return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
+      }
+
+      // Update the task completed status
+      tasks[taskIndex].completed = data.completed;
+
+      // Save back to database
+      await db.update.update({
+        where: { id },
+        data: {
+          tasks: JSON.stringify(tasks),
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('Error updating task:', error);
+      return NextResponse.json({ success: false, error: 'Failed to process task update' }, { status: 500 });
+    }
   } catch (error) {
-    console.error('Task deletion error:', error);
-    return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 });
+    console.error('API error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string; taskId: string } }): Promise<NextResponse> {
+// Also implement DELETE method
+export async function DELETE(req: Request, { params }: { params: { id: string; taskId: string } }) {
   try {
     const session = await getServerSession();
-
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const updateId = params.id;
-    const taskId = params.taskId;
-    const { newDescription } = (await req.json()) as UpdateTaskDescriptionRequest;
+    const { id, taskId } = params;
 
-    if (!newDescription?.trim()) {
-      return NextResponse.json({ error: 'Task description cannot be empty' }, { status: 400 });
-    }
-
-    // Get the update from the database
-    const update = await db.update.findUnique({
-      where: { id: updateId },
-    });
-
-    if (!update) {
-      return NextResponse.json({ error: 'Update not found' }, { status: 404 });
-    }
-
-    // Parse the tasks JSON
-    const tasks = JSON.parse(update.tasks) as TaskData[];
-
-    // Extract the task index from the taskId
-    const taskIdParts = taskId.split('-');
-    const taskIndex = parseInt(taskIdParts[1], 10);
-
-    // Check if the index is valid
-    if (isNaN(taskIndex) || taskIndex < 0 || taskIndex >= tasks.length) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-    }
-
-    // Update the task description
-    tasks[taskIndex].description = newDescription;
-
-    // Update the database
-    await db.update.update({
-      where: { id: updateId },
-      data: {
-        tasks: JSON.stringify(tasks),
+    const update = await db.update.findFirst({
+      where: {
+        id,
+        user: {
+          email: session.user.email,
+        },
       },
     });
 
-    return NextResponse.json({ success: true });
+    if (!update) {
+      return NextResponse.json({ success: false, error: 'Update not found' }, { status: 404 });
+    }
+
+    try {
+      const tasks = JSON.parse(update.tasks || '[]');
+
+      // Extract the task index from the taskId
+      const parts = taskId.split('-');
+      const taskIndex = parseInt(parts[1]);
+
+      if (isNaN(taskIndex) || !tasks[taskIndex]) {
+        return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
+      }
+
+      // Remove the task
+      tasks.splice(taskIndex, 1);
+
+      // Save back to database
+      await db.update.update({
+        where: { id },
+        data: {
+          tasks: JSON.stringify(tasks),
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      return NextResponse.json({ success: false, error: 'Failed to process task delete' }, { status: 500 });
+    }
   } catch (error) {
-    console.error('Task update error:', error);
-    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
+    console.error('API error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// Add PUT method for updating task description
+export async function PUT(req: Request, { params }: { params: { id: string; taskId: string } }) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { id, taskId } = params;
+    const data = await req.json();
+
+    if (!data.newDescription) {
+      return NextResponse.json({ success: false, error: 'New description is required' }, { status: 400 });
+    }
+
+    const update = await db.update.findFirst({
+      where: {
+        id,
+        user: {
+          email: session.user.email,
+        },
+      },
+    });
+
+    if (!update) {
+      return NextResponse.json({ success: false, error: 'Update not found' }, { status: 404 });
+    }
+
+    try {
+      const tasks = JSON.parse(update.tasks || '[]');
+
+      // Extract the task index from the taskId
+      const parts = taskId.split('-');
+      const taskIndex = parseInt(parts[1]);
+
+      if (isNaN(taskIndex) || !tasks[taskIndex]) {
+        return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
+      }
+
+      // Update task description
+      tasks[taskIndex].description = data.newDescription;
+
+      // Save back to database
+      await db.update.update({
+        where: { id },
+        data: {
+          tasks: JSON.stringify(tasks),
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('Error updating task description:', error);
+      return NextResponse.json({ success: false, error: 'Failed to update task description' }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('API error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

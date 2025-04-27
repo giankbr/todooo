@@ -2,149 +2,77 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
 
-// Define interfaces for our data structures
-interface TaskData {
-  description: string;
-  completed: boolean;
-  priority?: string;
-  dueDate?: string;
-  notes?: string;
-  estimatedTime?: number;
-}
-
-interface FormattedTask {
-  id: string;
-  title: string;
-  completed: boolean;
-  category: string;
-  priority: string;
-  estimatedTime: number; // Adding this field which was missing
-  dueDate?: string;
-  date: string;
-  user: {
-    name: string;
-    avatar: string;
-    initials: string;
-  };
-}
-
-export async function GET(req: Request): Promise<NextResponse> {
+export async function POST(req: Request) {
   try {
+    console.log('Task creation endpoint called');
+
     const session = await getServerSession();
-
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    // Handle various parameters
-    const date = searchParams.get('date');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
-    const priority = searchParams.get('priority');
-    const completed = searchParams.get('completed'); // Add handling for completed parameter
+    // Parse request body carefully
+    let data;
+    try {
+      const bodyText = await req.text();
+      console.log(`Request body length: ${bodyText.length}`);
 
-    console.log('API request params:', { date, startDate, endDate, priority, completed });
-
-    // Build query filters based on provided params
-    let dateFilter: any = {};
-
-    if (date) {
-      // Single day filter
-      const startOfDay = new Date(`${date}T00:00:00Z`);
-      const endOfDay = new Date(`${date}T23:59:59Z`);
-
-      dateFilter = {
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      };
-    } else if (startDate || endDate) {
-      // Date range filter
-      dateFilter = {
-        createdAt: {},
-      };
-
-      if (startDate) {
-        dateFilter.createdAt.gte = new Date(`${startDate}T00:00:00Z`);
+      if (!bodyText) {
+        return NextResponse.json({ success: false, error: 'Empty request body' }, { status: 400 });
       }
 
-      if (endDate) {
-        dateFilter.createdAt.lte = new Date(`${endDate}T23:59:59Z`);
-      }
-    } else {
-      // Default to all tasks if no date specified
-      dateFilter = {};
+      data = JSON.parse(bodyText);
+    } catch (e) {
+      console.error('Error parsing request body:', e);
+      return NextResponse.json({ success: false, error: 'Invalid JSON in request body' }, { status: 400 });
     }
 
-    // Query updates with the filters
-    const updates = await db.update.findMany({
-      where: {
-        ...dateFilter,
-        user: {
-          email: session.user.email,
+    console.log('Task creation data:', data);
+
+    // Validate required fields
+    if (!data.project || !data.tasks || !Array.isArray(data.tasks) || data.tasks.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid request data. Project and at least one task are required.',
         },
-      },
-      include: {
+        { status: 400 }
+      );
+    }
+
+    // Check if user email exists
+    if (!session.user.email) {
+      return NextResponse.json({ success: false, error: 'User email is required' }, { status: 400 });
+    }
+
+    // Create new update with the tasks
+    const newUpdate = await db.update.create({
+      data: {
+        projectName: data.project,
+        tasks: JSON.stringify(data.tasks),
         user: {
-          select: {
-            name: true,
-            avatar: true,
+          connect: {
+            email: session.user.email,
           },
         },
-        project: true,
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100, // Limit to 100 most recent updates
     });
 
-    // Process and format tasks
-    const formattedTasks: FormattedTask[] = [];
+    console.log('Created new update:', newUpdate.id);
 
-    for (const update of updates) {
-      try {
-        const tasks = JSON.parse(update.tasks || '[]') as TaskData[];
-        const projectName = update.project?.name || update.projectName || 'No Project';
-
-        // Filter tasks by priority if specified
-        let filteredTasks = priority && priority !== 'all' ? tasks.filter((task) => task.priority === priority) : tasks;
-
-        // Filter by completion status if specified
-        if (completed !== null) {
-          const isCompleted = completed === 'true';
-          filteredTasks = filteredTasks.filter((task) => task.completed === isCompleted);
-        }
-
-        const mappedTasks = filteredTasks.map((task, index) => ({
-          id: `${update.id}-${index}-${task.description.substring(0, 10).replace(/[^a-zA-Z0-9]/g, '')}`,
-          title: task.description,
-          completed: task.completed,
-          category: projectName,
-          priority: task.priority || 'medium',
-          estimatedTime: task.estimatedTime || 30, // Default to 30 minutes if not specified
-          dueDate: task.dueDate,
-          date: update.createdAt.toISOString(),
-          user: {
-            name: update.user.name,
-            avatar: update.user.avatar || '/placeholder.svg',
-            initials: update.user.name
-              .split(' ')
-              .map((n) => n[0])
-              .join(''),
-          },
-        }));
-
-        formattedTasks.push(...mappedTasks);
-      } catch (e) {
-        console.error('Error processing tasks for update:', e);
-      }
-    }
-
-    console.log(`Found ${formattedTasks.length} formatted tasks`);
-    return NextResponse.json({ tasks: formattedTasks });
+    // Always return a valid JSON response
+    return NextResponse.json({
+      success: true,
+      updateId: newUpdate.id,
+    });
   } catch (error) {
-    console.error('Tasks API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error creating tasks:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create tasks',
+      },
+      { status: 500 }
+    );
   }
 }
