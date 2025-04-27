@@ -1,15 +1,18 @@
-"use client"
+'use client';
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ModeToggle } from "@/components/mode-toggle"
-import { Bell, Search, Sparkles } from "lucide-react"
+import { ModeToggle } from '@/components/mode-toggle';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Bell, Search, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation'; // Import useRouter for programmatic navigation
 
 interface HeaderProps {
-  title: string
+  title: string;
 }
 
 export function Header({ title }: HeaderProps) {
+  const router = useRouter(); // Initialize router for navigation
+
   return (
     <header className="flex h-14 items-center justify-between border-b px-4">
       <div className="flex items-center gap-4">
@@ -22,7 +25,7 @@ export function Header({ title }: HeaderProps) {
           <Input type="search" placeholder="Search for task name..." className="w-[300px] rounded-md pl-8" />
         </div>
 
-        <Button variant="outline" size="sm" className="gap-1">
+        <Button variant="outline" size="sm" className="gap-1" onClick={() => router.push('/dashboard/focus')}>
           <Search className="h-4 w-4 md:hidden" />
           <span className="hidden md:inline">Focus Mode</span>
         </Button>
@@ -40,5 +43,5 @@ export function Header({ title }: HeaderProps) {
         <ModeToggle />
       </div>
     </header>
-  )
+  );
 }

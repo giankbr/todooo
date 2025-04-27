@@ -6,9 +6,10 @@ import { NextResponse } from 'next/server';
 interface TaskData {
   description: string;
   completed: boolean;
-  priority?: string; // Add priority as an optional property
-  dueDate?: string; // Add dueDate as an optional property
-  notes?: string; // Add notes as an optional property if you plan to use it
+  priority?: string;
+  dueDate?: string;
+  notes?: string;
+  estimatedTime?: number;
 }
 
 interface FormattedTask {
@@ -17,18 +18,14 @@ interface FormattedTask {
   completed: boolean;
   category: string;
   priority: string;
-  dueDate?: string; // Make sure it's included here too
+  estimatedTime: number; // Adding this field which was missing
+  dueDate?: string;
   date: string;
   user: {
     name: string;
     avatar: string;
     initials: string;
   };
-}
-
-interface TaskRequestBody {
-  project: string;
-  tasks: TaskData[];
 }
 
 export async function GET(req: Request): Promise<NextResponse> {
@@ -40,18 +37,53 @@ export async function GET(req: Request): Promise<NextResponse> {
     }
 
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    // Handle various parameters
+    const date = searchParams.get('date');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+    const priority = searchParams.get('priority');
+    const completed = searchParams.get('completed'); // Add handling for completed parameter
 
-    // Get today's start and end
-    const startOfDay = new Date(`${date}T00:00:00Z`);
-    const endOfDay = new Date(`${date}T23:59:59Z`);
+    console.log('API request params:', { date, startDate, endDate, priority, completed });
 
-    // Query updates for today
-    const updates = await db.update.findMany({
-      where: {
+    // Build query filters based on provided params
+    let dateFilter: any = {};
+
+    if (date) {
+      // Single day filter
+      const startOfDay = new Date(`${date}T00:00:00Z`);
+      const endOfDay = new Date(`${date}T23:59:59Z`);
+
+      dateFilter = {
         createdAt: {
           gte: startOfDay,
           lte: endOfDay,
+        },
+      };
+    } else if (startDate || endDate) {
+      // Date range filter
+      dateFilter = {
+        createdAt: {},
+      };
+
+      if (startDate) {
+        dateFilter.createdAt.gte = new Date(`${startDate}T00:00:00Z`);
+      }
+
+      if (endDate) {
+        dateFilter.createdAt.lte = new Date(`${endDate}T23:59:59Z`);
+      }
+    } else {
+      // Default to all tasks if no date specified
+      dateFilter = {};
+    }
+
+    // Query updates with the filters
+    const updates = await db.update.findMany({
+      where: {
+        ...dateFilter,
+        user: {
+          email: session.user.email,
         },
       },
       include: {
@@ -64,110 +96,53 @@ export async function GET(req: Request): Promise<NextResponse> {
         project: true,
       },
       orderBy: { createdAt: 'desc' },
+      take: 100, // Limit to 100 most recent updates
     });
 
     // Process and format tasks
-    const formattedTasks: FormattedTask[] = updates.flatMap((update) => {
-      const tasks = JSON.parse(update.tasks || '[]') as TaskData[];
-      const projectName = update.project?.name || update.projectName || 'No Project';
+    const formattedTasks: FormattedTask[] = [];
 
-      return tasks.map((task, index) => ({
-        // Add index to make IDs unique even if descriptions start the same
-        id: `${update.id}-${index}-${task.description.substring(0, 10)}`,
-        title: task.description,
-        completed: task.completed,
-        category: projectName,
-        priority: task.priority || 'medium',
-        dueDate: task.dueDate,
-        date: update.createdAt.toLocaleDateString(),
-        user: {
-          name: update.user.name,
-          avatar: update.user.avatar || '/placeholder.svg',
-          initials: update.user.name
-            .split(' ')
-            .map((n) => n[0])
-            .join(''),
-        },
-      }));
-    });
+    for (const update of updates) {
+      try {
+        const tasks = JSON.parse(update.tasks || '[]') as TaskData[];
+        const projectName = update.project?.name || update.projectName || 'No Project';
 
-    return NextResponse.json({ tasks: formattedTasks });
-  } catch (error) {
-    console.error('Tasks API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+        // Filter tasks by priority if specified
+        let filteredTasks = priority && priority !== 'all' ? tasks.filter((task) => task.priority === priority) : tasks;
 
-export async function POST(req: Request): Promise<NextResponse> {
-  try {
-    const session = await getServerSession();
+        // Filter by completion status if specified
+        if (completed !== null) {
+          const isCompleted = completed === 'true';
+          filteredTasks = filteredTasks.filter((task) => task.completed === isCompleted);
+        }
 
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+        const mappedTasks = filteredTasks.map((task, index) => ({
+          id: `${update.id}-${index}-${task.description.substring(0, 10).replace(/[^a-zA-Z0-9]/g, '')}`,
+          title: task.description,
+          completed: task.completed,
+          category: projectName,
+          priority: task.priority || 'medium',
+          estimatedTime: task.estimatedTime || 30, // Default to 30 minutes if not specified
+          dueDate: task.dueDate,
+          date: update.createdAt.toISOString(),
+          user: {
+            name: update.user.name,
+            avatar: update.user.avatar || '/placeholder.svg',
+            initials: update.user.name
+              .split(' ')
+              .map((n) => n[0])
+              .join(''),
+          },
+        }));
 
-    const { project, tasks } = (await req.json()) as TaskRequestBody;
-
-    if (!project || !tasks || !tasks.length) {
-      return NextResponse.json({ error: 'Invalid task data' }, { status: 400 });
-    }
-
-    // Find the user by email (since that's what's available in the session)
-    const user = await db.user.findUnique({
-      where: {
-        email: session.user.email as string,
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Find project or create reference by name
-    let projectId: string | null = null;
-    if (project) {
-      const existingProject = await db.project.findFirst({
-        where: { name: project },
-      });
-
-      if (existingProject) {
-        projectId = existingProject.id;
+        formattedTasks.push(...mappedTasks);
+      } catch (e) {
+        console.error('Error processing tasks for update:', e);
       }
     }
 
-    // Create update with tasks using the user connection
-    const update = await db.update.create({
-      data: {
-        user: {
-          connect: { id: user.id },
-        },
-        project: projectId
-          ? {
-              connect: { id: projectId },
-            }
-          : undefined,
-        projectName: !projectId ? project : undefined,
-        tasks: JSON.stringify(tasks),
-        source: 'manual',
-      },
-      include: {
-        user: {
-          select: {
-            name: true,
-            avatar: true,
-          },
-        },
-        project: true,
-      },
-    });
-
-    return NextResponse.json(
-      {
-        update,
-        message: 'Tasks created successfully',
-      },
-      { status: 201 }
-    );
+    console.log(`Found ${formattedTasks.length} formatted tasks`);
+    return NextResponse.json({ tasks: formattedTasks });
   } catch (error) {
     console.error('Tasks API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

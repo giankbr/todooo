@@ -161,17 +161,17 @@ export default function DashboardPage() {
       // Optimistic UI update
       setTasks(tasks.map((task) => (task.id === taskId ? { ...task, completed: isCompleted } : task)));
 
-      // Parse taskId to get the actual update ID
-      const [updateId] = taskId.split('-');
+      // Parse taskId to extract required components for API
+      // Format is likely "updateId-taskIndex-taskHash"
+      const [updateId, taskIndex] = taskId.split('-');
 
-      // Send update to the server
-      const res = await fetch(`/api/tasks/${updateId}`, {
+      // Send update to the server with the correct endpoint structure
+      const res = await fetch(`/api/tasks/${updateId}/task/${taskId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          taskId: taskId,
           completed: isCompleted,
         }),
       });
@@ -515,9 +515,8 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium line-through text-muted-foreground">{task.title}</span>
                   <div className="flex gap-2">
-                    {/* FIX: Replace Button with a div */}
                     <div className="h-7 w-7 flex items-center justify-center cursor-pointer hover:bg-muted rounded-md" onClick={() => toggleTaskStatus(task.id, false)}>
-                      <Checkbox checked={true} />
+                      <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task.id, false)} disabled={savingTaskId === task.id} />
                       <span className="sr-only">Undo</span>
                     </div>
                     {/* FIX: Replace Button with a div */}
@@ -596,10 +595,13 @@ export default function DashboardPage() {
                         className={`text-xs p-1 rounded ${task.completed ? 'bg-muted line-through text-muted-foreground' : 'bg-background'}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleTaskStatus(task.id, !task.completed);
+                          if (savingTaskId !== task.id) {
+                            toggleTaskStatus(task.id, !task.completed);
+                          }
                         }}
                       >
                         {task.title}
+                        {savingTaskId === task.id && <span className="ml-1 text-xs animate-pulse">...</span>}
                         {task.priority === 'high' && <span className="ml-1 text-destructive">*</span>}
                       </div>
                     ))}

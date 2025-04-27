@@ -12,7 +12,14 @@ import { Loader2 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 
-// Types for report configuration
+interface TaskPreview {
+  id: string;
+  title: string;
+  priority: 'high' | 'medium' | 'low';
+  completed: boolean;
+  date: string;
+}
+
 interface ReportConfig {
   impactLevel: number;
   priorityThreshold: 'all' | 'high' | 'medium' | 'low';
@@ -23,15 +30,6 @@ interface ReportConfig {
   endDate: string | null;
   endCount: number | null;
   sendCopyToSelf: boolean;
-}
-
-// Types for report data
-interface TaskPreview {
-  id: string;
-  title: string;
-  priority: 'high' | 'medium' | 'low';
-  completed: boolean;
-  date: string;
 }
 
 export default function ShareImpactPage() {
@@ -46,17 +44,17 @@ export default function ShareImpactPage() {
   // Form state
   const [reportConfig, setReportConfig] = useState<ReportConfig>({
     impactLevel: 5,
-    priorityThreshold: 'all', // Default to 'all' instead of 'high'
+    priorityThreshold: 'all',
     recipients: [],
     scheduleDays: ['Monday'],
     scheduleTime: '09:00',
     endType: 'on-date',
-    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
-    endCount: 4, // Default to 4 reports
+    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endCount: 4,
     sendCopyToSelf: true,
   });
 
-  // Separate state for the recipients input field for easier handling
+  // Separate state for the recipients input field
   const [recipientsInput, setRecipientsInput] = useState('');
 
   // Effect to fetch preview tasks
@@ -71,12 +69,12 @@ export default function ShareImpactPage() {
 
       // Get current date in ISO format
       const today = new Date().toISOString().split('T')[0];
-      // Get date from 7 days ago to simulate a week
+      // Get date from 7 days ago
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       const weekAgoStr = weekAgo.toISOString().split('T')[0];
 
-      // Construct the URL with or without priority parameter
+      // Construct the URL
       let url = `/api/tasks?startDate=${weekAgoStr}&endDate=${today}`;
       if (reportConfig.priorityThreshold !== 'all') {
         url += `&priority=${reportConfig.priorityThreshold}`;
@@ -84,22 +82,25 @@ export default function ShareImpactPage() {
 
       console.log('Fetching tasks from:', url);
 
-      // Fetch tasks from API
-      const response = await fetch(url);
+      // Fetch tasks from API with explicit no-cache
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
 
       if (!response.ok) {
-        // Get error details from response
-        let errorMessage = 'Failed to fetch tasks';
+        // Get error details
+        let errorDetails = '';
         try {
           const errorData = await response.json();
           if (errorData.error) {
-            errorMessage = errorData.error;
+            errorDetails = `: ${errorData.error}`;
           }
-        } catch (e) {
-          console.error('Error parsing error response:', e);
-        }
+        } catch (e) {}
 
-        throw new Error(`${errorMessage} (Status: ${response.status})`);
+        throw new Error(`Failed to fetch tasks (${response.status})${errorDetails}`);
       }
 
       const data = await response.json();
@@ -121,12 +122,37 @@ export default function ShareImpactPage() {
         variant: 'destructive',
       });
 
-      // Set empty arrays to prevent errors in the UI
-      setPreviewTasks([]);
-      setCompletedTaskCount(0);
+      // Use mock data in development if no tasks were found
+      if (process.env.NODE_ENV === 'development') {
+        const mockTasks = generateMockTasks();
+        setPreviewTasks(mockTasks);
+        setCompletedTaskCount(mockTasks.length);
+      } else {
+        setPreviewTasks([]);
+        setCompletedTaskCount(0);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Generate mock tasks for development
+  const generateMockTasks = () => {
+    const priorities = ['high', 'medium', 'low'] as const;
+    const mockTasks: TaskPreview[] = [];
+
+    for (let i = 0; i < reportConfig.impactLevel; i++) {
+      const priority = priorities[i % 3];
+      mockTasks.push({
+        id: `mock-${i}`,
+        title: `Example completed task ${i + 1}`,
+        priority,
+        completed: true,
+        date: new Date().toISOString(),
+      });
+    }
+
+    return mockTasks;
   };
 
   // Handle form input changes
@@ -180,11 +206,10 @@ export default function ShareImpactPage() {
         throw new Error(data.error || 'Failed to schedule report');
       }
 
-      // Force toast to show
       toast({
-        title: 'Report scheduled successfully',
-        description: 'Your impact report has been scheduled to send',
-        variant: 'default',
+        title: 'Report scheduled',
+        description: 'Your impact report has been scheduled successfully',
+        duration: 5000,
       });
     } catch (error) {
       console.error('Error scheduling report:', error);
@@ -192,6 +217,7 @@ export default function ShareImpactPage() {
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to schedule report',
         variant: 'destructive',
+        duration: 5000,
       });
     } finally {
       setIsLoading(false);
@@ -232,6 +258,8 @@ export default function ShareImpactPage() {
         userName: session?.user?.name,
       };
 
+      console.log('Sending test email with payload:', payload);
+
       // Send to API
       const response = await fetch('/api/reports/send-test', {
         method: 'POST',
@@ -241,30 +269,24 @@ export default function ShareImpactPage() {
         body: JSON.stringify(payload),
       });
 
-      // Get the response data
       const data = await response.json();
 
       if (!response.ok) {
-        // Create a descriptive error message
-        const errorMessage = data.details || data.error || 'Failed to send test email';
-        throw new Error(errorMessage);
+        throw new Error(data.error || data.details || 'Failed to send test email');
       }
 
-      // Force toast to display
       toast({
         title: 'Test email sent',
-        description: `A test report has been sent to ${testEmail}`,
-        duration: 5000, // Show for 5 seconds to ensure visibility
+        description: `A test email has been sent to ${testEmail}`,
+        duration: 5000,
       });
     } catch (error) {
       console.error('Error sending test email:', error);
-
-      // Show a detailed error message
       toast({
-        title: 'Email sending failed',
-        description: error instanceof Error ? error.message : 'Could not send test email',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to send test email',
         variant: 'destructive',
-        duration: 5000, // Show error for longer
+        duration: 5000,
       });
     } finally {
       setIsSendingTest(false);

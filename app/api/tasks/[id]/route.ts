@@ -2,64 +2,75 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
 
-// Define interfaces for our data structures
-interface TaskData {
-  description: string;
-  completed: boolean;
-}
-
-interface UpdateTaskRequest {
-  taskId: string;
-  completed: boolean;
-}
-
-export async function PATCH(req: Request, { params }: { params: { id: string } }): Promise<NextResponse> {
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession();
-
-    if (!session?.user) {
+    if (!session?.user || !session.user.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const updateId = params.id;
-    const { taskId, completed } = (await req.json()) as UpdateTaskRequest;
+    const id = params.id;
+    const data = await req.json();
 
-    // Get the update from the database
-    const update = await db.update.findUnique({
-      where: { id: updateId },
+    console.log('Task update request:', { id, data });
+
+    // Parse task ID to get the update ID
+    const idParts = id.split('-');
+    if (idParts.length < 2) {
+      return NextResponse.json({ error: 'Invalid task ID format' }, { status: 400 });
+    }
+
+    const updateId = idParts[0];
+    const taskIndex = parseInt(idParts[1]);
+
+    if (isNaN(taskIndex)) {
+      return NextResponse.json({ error: 'Invalid task index' }, { status: 400 });
+    }
+
+    // Fetch the update to verify ownership and get the tasks
+    const update = await db.update.findFirst({
+      where: {
+        id: updateId,
+        user: {
+          email: session.user.email,
+        },
+      },
     });
 
     if (!update) {
       return NextResponse.json({ error: 'Update not found' }, { status: 404 });
     }
 
-    // Parse the tasks JSON
-    const tasks = JSON.parse(update.tasks) as TaskData[];
+    // Parse tasks, modify the specific task, and save back
+    try {
+      const tasks = JSON.parse(update.tasks || '[]');
 
-    // Extract the task description from the composite taskId
-    const taskDescSnippet = taskId.split('-')[1];
-
-    // Find and update the task status
-    const updatedTasks = tasks.map((task) => {
-      // Check if this is the task we want to update
-      // (using substring comparison since we only stored the first 10 chars in the taskId)
-      if (task.description.substring(0, 10) === taskDescSnippet) {
-        return { ...task, completed };
+      if (!tasks[taskIndex]) {
+        return NextResponse.json({ error: 'Task not found in update' }, { status: 404 });
       }
-      return task;
-    });
 
-    // Update the database
-    await db.update.update({
-      where: { id: updateId },
-      data: {
-        tasks: JSON.stringify(updatedTasks),
-      },
-    });
+      // Update the task properties
+      tasks[taskIndex].completed = data.completed;
 
-    return NextResponse.json({ success: true });
+      // Save back to database
+      const updatedUpdate = await db.update.update({
+        where: { id: updateId },
+        data: {
+          tasks: JSON.stringify(tasks),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        taskId: id,
+        completed: data.completed,
+      });
+    } catch (error) {
+      console.error('Error updating task:', error);
+      return NextResponse.json({ error: 'Failed to parse or update tasks' }, { status: 500 });
+    }
   } catch (error) {
-    console.error('Task update error:', error);
-    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
+    console.error('Error in PATCH /api/tasks/[id]:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
