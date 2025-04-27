@@ -9,6 +9,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string; ta
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!session.user.email) {
+      return NextResponse.json({ success: false, error: 'Email not found' }, { status: 400 });
+    }
+
     const { id, taskId } = params;
     const data = await req.json();
 

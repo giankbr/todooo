@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 export async function PATCH(req: Request, { params }: { params: { id: string; taskId: string } }) {
   try {
     const session = await getServerSession();
-    if (!session?.user) {
+    if (!session?.user || !session.user.email) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
