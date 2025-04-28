@@ -8,12 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { BarChart, Camera, Inbox, ListTodo, LogOut, PlusCircle, Settings, Share2, Star, Trophy, UserIcon } from 'lucide-react';
+import { BarChart, Camera, Inbox, ListTodo, Loader2, LogOut, PlusCircle, Settings, Share2, Star, Trophy, UserIcon } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+
+// Add Project interface
+interface Project {
+  id: string;
+  name: string;
+  slug?: string;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -30,6 +37,49 @@ export function Sidebar() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Add state for projects
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
+
+  // Fetch projects when component mounts
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  // Function to fetch user's projects
+  const fetchProjects = async () => {
+    try {
+      setIsLoadingProjects(true);
+      setProjectError(null);
+
+      const response = await fetch('/api/projects', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch projects: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setProjects(data.projects || []);
+      } else {
+        throw new Error(data.error || 'Failed to load projects');
+      }
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      setProjectError(error instanceof Error ? error.message : 'Unknown error');
+      // Don't show toast for better UX
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
 
   // Initialize form fields when profile dialog opens
   const openProfileDialog = () => {
@@ -207,33 +257,6 @@ export function Sidebar() {
     },
   ];
 
-  const listsNavItems = [
-    {
-      title: 'Projects',
-      href: '/dashboard/projects',
-      icon: Inbox,
-      active: true,
-    },
-    {
-      title: 'Oslona Website',
-      href: '/dashboard/projects/oslona',
-      icon: Star,
-      indented: true,
-    },
-    {
-      title: 'Dribbble',
-      href: '/dashboard/projects/dribbble',
-      icon: Star,
-      indented: true,
-    },
-    {
-      title: 'Personal Project',
-      href: '/dashboard/projects/personal',
-      icon: Star,
-      indented: true,
-    },
-  ];
-
   return (
     <div className="flex h-full w-64 flex-col border-r bg-background">
       <div className="flex h-14 items-center border-b px-4">
@@ -256,19 +279,49 @@ export function Sidebar() {
       </div>
 
       <div className="flex flex-col gap-1 p-2">
-        <p className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground">Lists</p>
-        {listsNavItems.map((item) => (
-          <Link key={item.href} href={item.href} className={cn('sidebar-item', item.indented && 'pl-6', (pathname === item.href || item.active) && 'active')}>
-            <item.icon className="sidebar-icon" />
-            <span>{item.title}</span>
-          </Link>
-        ))}
-        <button className="sidebar-item text-muted-foreground">
+        <p className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground">Projects</p>
+
+        {/* Project header */}
+        <Link href="/dashboard/projects" className={cn('sidebar-item', pathname === '/dashboard/projects' && 'active')}>
+          <Inbox className="sidebar-icon" />
+          <span>All Projects</span>
+        </Link>
+
+        {/* Loading state */}
+        {isLoadingProjects && (
+          <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Loading projects...</span>
+          </div>
+        )}
+
+        {/* Error state */}
+        {projectError && !isLoadingProjects && <div className="px-3 py-2 text-sm text-destructive">Failed to load projects</div>}
+
+        {/* Project list */}
+        {!isLoadingProjects && !projectError && projects.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">No projects yet</div>}
+
+        {!isLoadingProjects &&
+          !projectError &&
+          projects.map((project) => (
+            <Link
+              key={project.id}
+              href={`/dashboard/projects/${project.slug || project.id}`}
+              className={cn('sidebar-item pl-6', pathname === `/dashboard/projects/${project.slug || project.id}` && 'active')}
+            >
+              <Star className="sidebar-icon" />
+              <span>{project.name}</span>
+            </Link>
+          ))}
+
+        {/* Add project button */}
+        <button className="sidebar-item text-muted-foreground" onClick={() => router.push('/dashboard/projects/new')}>
           <PlusCircle className="sidebar-icon" />
-          <span>Add List</span>
+          <span>Add Project</span>
         </button>
       </div>
 
+      {/* User profile section - keep existing code */}
       <div className="mt-auto border-t p-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -301,7 +354,7 @@ export function Sidebar() {
         </DropdownMenu>
       </div>
 
-      {/* Enhanced Profile Edit Dialog */}
+      {/* Enhanced Profile Edit Dialog - keep existing code */}
       <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

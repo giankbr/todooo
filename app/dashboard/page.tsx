@@ -596,12 +596,10 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className={`font-medium ${task.completed ? 'line-through text-muted-foreground' : ''}`}>{task.title}</span>
                   <div className="flex gap-2">
-                    {/* FIX: Replace Button with a div */}
                     <div className="h-7 w-7 flex items-center justify-center cursor-pointer hover:bg-muted rounded-md" onClick={() => toggleTaskStatus(task.id, true)}>
                       <Checkbox checked={false} />
                       <span className="sr-only">Complete</span>
                     </div>
-                    {/* FIX: Replace Button with a div */}
                     <div
                       className="h-7 w-7 flex items-center justify-center cursor-pointer hover:bg-muted rounded-md"
                       onClick={() => {
@@ -636,7 +634,6 @@ export default function DashboardPage() {
                       <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task.id, false)} disabled={savingTaskId === task.id} />
                       <span className="sr-only">Undo</span>
                     </div>
-                    {/* FIX: Replace Button with a div */}
                     <div className="h-7 w-7 flex items-center justify-center cursor-pointer hover:bg-muted rounded-md text-muted-foreground hover:text-destructive" onClick={() => deleteTask(task.id)}>
                       <Trash2 className="h-4 w-4" />
                       <span className="sr-only">Delete</span>
