@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { BarChart, Camera, Inbox, ListTodo, Loader2, LogOut, PlusCircle, Settings, Share2, Star, Trophy, UserIcon } from 'lucide-react';
+import { BarChart, Camera, ChevronLeft, ChevronRight, Inbox, ListTodo, Loader2, LogOut, PlusCircle, Settings, Share2, Star, Trophy, UserIcon } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -42,6 +42,23 @@ export function Sidebar() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
+
+  // Add collapsed state
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Optionally, save collapsed state in localStorage
+  useEffect(() => {
+    const savedState = localStorage.getItem('sidebar-collapsed');
+    if (savedState) {
+      setIsCollapsed(savedState === 'true');
+    }
+  }, []);
+
+  const toggleSidebar = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem('sidebar-collapsed', String(newState));
+  };
 
   // Fetch projects when component mounts
   useEffect(() => {
@@ -258,48 +275,69 @@ export function Sidebar() {
   ];
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-background">
-      <div className="flex h-14 items-center border-b px-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-            <span className="text-xs font-bold text-primary-foreground">B</span>
-          </div>
-          <span className="font-semibold">MorfoTasks</span>
-        </Link>
+    <div className={cn('flex h-full flex-col border-r bg-background transition-all duration-300', isCollapsed ? 'w-16' : 'w-64')}>
+      <div className="flex h-14 items-center justify-between border-b px-4">
+        {!isCollapsed && (
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
+              <span className="text-xs font-bold text-primary-foreground">M</span>
+            </div>
+            <span className="font-semibold">MorfoTasks</span>
+          </Link>
+        )}
+        {isCollapsed && (
+          <Link href="/dashboard" className="mx-auto">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+              <span className="text-xs font-bold text-primary-foreground">M</span>
+            </div>
+          </Link>
+        )}
+        <Button variant="ghost" size="icon" className={cn('h-8 w-8', isCollapsed && 'absolute -right-4 top-12 z-10 bg-background border shadow-sm rounded-full')} onClick={toggleSidebar}>
+          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          <span className="sr-only">{isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
+        </Button>
       </div>
 
       <div className="flex flex-col gap-1 p-2">
-        <p className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground">Main Menu</p>
+        {!isCollapsed && <p className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground">Main Menu</p>}
         {mainNavItems.map((item) => (
-          <Link key={item.href} href={item.href} className={cn('sidebar-item', pathname === item.href && 'active')}>
-            <item.icon className="sidebar-icon" />
-            <span>{item.title}</span>
+          <Link key={item.href} href={item.href} className={cn('sidebar-item', pathname === item.href && 'active', isCollapsed && 'justify-center px-2')} title={item.title}>
+            <item.icon className={cn('sidebar-icon', isCollapsed && 'mr-0')} />
+            {!isCollapsed && <span>{item.title}</span>}
           </Link>
         ))}
       </div>
 
       <div className="flex flex-col gap-1 p-2">
-        <p className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground">Projects</p>
+        {!isCollapsed && <p className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground">Projects</p>}
 
         {/* Project header */}
-        <Link href="/dashboard/projects" className={cn('sidebar-item', pathname === '/dashboard/projects' && 'active')}>
-          <Inbox className="sidebar-icon" />
-          <span>All Projects</span>
+        <Link href="/dashboard/projects" className={cn('sidebar-item', pathname === '/dashboard/projects' && 'active', isCollapsed && 'justify-center px-2')} title="All Projects">
+          <Inbox className={cn('sidebar-icon', isCollapsed && 'mr-0')} />
+          {!isCollapsed && <span>All Projects</span>}
         </Link>
 
         {/* Loading state */}
-        {isLoadingProjects && (
+        {isLoadingProjects && !isCollapsed && (
           <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">Loading projects...</span>
+            <span className="text-sm">Loading...</span>
+          </div>
+        )}
+
+        {isLoadingProjects && isCollapsed && (
+          <div className="flex justify-center py-2">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           </div>
         )}
 
         {/* Error state */}
-        {projectError && !isLoadingProjects && <div className="px-3 py-2 text-sm text-destructive">Failed to load projects</div>}
+        {projectError && !isLoadingProjects && !isCollapsed && <div className="px-3 py-2 text-sm text-destructive">Failed to load</div>}
+
+        {/* Show nothing when collapsed and there's an error */}
 
         {/* Project list */}
-        {!isLoadingProjects && !projectError && projects.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">No projects yet</div>}
+        {!isLoadingProjects && !projectError && projects.length === 0 && !isCollapsed && <div className="px-3 py-2 text-sm text-muted-foreground">No projects yet</div>}
 
         {!isLoadingProjects &&
           !projectError &&
@@ -307,36 +345,39 @@ export function Sidebar() {
             <Link
               key={project.id}
               href={`/dashboard/projects/${project.slug || project.id}`}
-              className={cn('sidebar-item pl-6', pathname === `/dashboard/projects/${project.slug || project.id}` && 'active')}
+              className={cn('sidebar-item', pathname === `/dashboard/projects/${project.slug || project.id}` && 'active', isCollapsed ? 'justify-center px-2' : 'pl-6')}
+              title={project.name}
             >
-              <Star className="sidebar-icon" />
-              <span>{project.name}</span>
+              <Star className={cn('sidebar-icon', isCollapsed && 'mr-0')} />
+              {!isCollapsed && <span>{project.name}</span>}
             </Link>
           ))}
 
         {/* Add project button */}
-        <button className="sidebar-item text-muted-foreground" onClick={() => router.push('/dashboard/projects/new')}>
-          <PlusCircle className="sidebar-icon" />
-          <span>Add Project</span>
+        <button className={cn('sidebar-item text-muted-foreground', isCollapsed && 'justify-center px-2')} onClick={() => router.push('/dashboard/projects/new')} title="Add Project">
+          <PlusCircle className={cn('sidebar-icon', isCollapsed && 'mr-0')} />
+          {!isCollapsed && <span>Add Project</span>}
         </button>
       </div>
 
-      {/* User profile section - keep existing code */}
-      <div className="mt-auto border-t p-4">
+      {/* User profile section */}
+      <div className={cn('mt-auto border-t p-4', isCollapsed && 'p-2')}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex w-full items-center gap-3 rounded-md p-2 hover:bg-muted">
+            <button className={cn('flex w-full items-center gap-3 rounded-md p-2 hover:bg-muted', isCollapsed && 'justify-center p-1')}>
               <Avatar className="h-9 w-9 border">
                 <AvatarImage src={session?.user?.avatar || session?.user?.image || '/placeholder.svg'} alt={session?.user?.name || 'User'} />
                 <AvatarFallback>{getUserInitials()}</AvatarFallback>
               </Avatar>
-              <div className="flex flex-1 flex-col text-left">
-                <span className="text-sm font-medium truncate">{session?.user?.name || 'Guest User'}</span>
-                <span className="text-xs text-muted-foreground">{session?.user?.email}</span>
-              </div>
+              {!isCollapsed && (
+                <div className="flex flex-1 flex-col text-left">
+                  <span className="text-sm font-medium truncate">{session?.user?.name || 'Guest User'}</span>
+                  <span className="text-xs text-muted-foreground">{session?.user?.email}</span>
+                </div>
+              )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuContent align={isCollapsed ? 'center' : 'start'} className="w-56">
             <DropdownMenuItem onClick={openProfileDialog}>
               <UserIcon className="mr-2 h-4 w-4" />
               <span>Edit Profile</span>
@@ -354,7 +395,7 @@ export function Sidebar() {
         </DropdownMenu>
       </div>
 
-      {/* Enhanced Profile Edit Dialog - keep existing code */}
+      {/* Dialog remains unchanged */}
       <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

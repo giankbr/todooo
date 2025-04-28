@@ -24,11 +24,13 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
-        if (!user || !user.passwordHash) {
+        // Changed: passwordHash to password to match your schema
+        if (!user || !user.password) {
           return null;
         }
 
-        const passwordMatch = await bcrypt.compare(credentials.password, user.passwordHash);
+        // Changed: passwordHash to password
+        const passwordMatch = await bcrypt.compare(credentials.password, user.password);
 
         if (!passwordMatch) {
           return null;
@@ -38,7 +40,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           name: user.name,
           email: user.email,
-          image: user.image,
+          image: user.avatar, // Using avatar field from your schema
         };
       },
     }),

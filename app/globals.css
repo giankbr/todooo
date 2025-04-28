@@ -122,4 +122,14 @@
   height: calc(var(--spacing-base) * 2.25);
 }
 
-/* Add more compact styles as needed */
+.sidebar-item {
+  @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-all hover:bg-muted;
+}
+
+.sidebar-item.active {
+  @apply bg-muted font-medium;
+}
+
+.sidebar-icon {
+  @apply h-4 w-4 mr-2;
+}
